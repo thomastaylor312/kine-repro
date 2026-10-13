@@ -6,7 +6,7 @@ retries, and the only way out is restarting the process.
 
 I hit this on a busy production tenant running k3s with an external Postgres datastore, spent a
 while chasing the wrong theories, and eventually reproduced it locally. Everything here runs against
-real k3s v1.37.1-rc2+k3s1 and real kine v0.17.1 (which includes the watch pipeline rewrite from
+real k3s v1.37.1+k3s1 and real kine v0.17.1 (which includes the watch pipeline rewrite from
 [k3s-io/kine#746](https://github.com/k3s-io/kine/pull/746)) with no patched builds or mocking
 (outside of the latency injection). It reproduces the same way on k3s v1.33.13+k3s1 with kine
 v0.16.1; set `K3S_IMAGE=rancher/k3s:v1.33.13-k3s1` when running `start-k3s.sh` to use that.
