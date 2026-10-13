@@ -6,8 +6,10 @@ retries, and the only way out is restarting the process.
 
 I hit this on a busy production tenant running k3s with an external Postgres datastore, spent a
 while chasing the wrong theories, and eventually reproduced it locally. Everything here runs against
-real k3s v1.33.13+k3s1 and real kine v0.16.1 with no patched builds or mocking (outside of the
-latency injection).
+real k3s v1.37.1-rc2+k3s1 and real kine v0.17.1 (which includes the watch pipeline rewrite from
+[k3s-io/kine#746](https://github.com/k3s-io/kine/pull/746)) with no patched builds or mocking
+(outside of the latency injection). It reproduces the same way on k3s v1.33.13+k3s1 with kine
+v0.16.1; set `K3S_IMAGE=rancher/k3s:v1.33.13-k3s1` when running `start-k3s.sh` to use that.
 
 An earlier version of this repo blamed raw write volume and needed about 1,700 writes/s to trip.
 That turned out to be the wrong knob entirely. I have since gone back through the metrics and logs
@@ -85,9 +87,8 @@ Production logged exactly one `GAP` line during the whole incident, and this rep
 ### Step 2.5 Compaction deletes the backlog and makes the gap bigger
 
 Compaction is driven entirely by the write revision. `safeCompactRev` compares against `currentRev`,
-and `polledRev` is referenced in exactly three places in the whole codebase: where it's declared,
-where `poll()` writes it, and where `WaitForSyncTo` reads it. Nothing in the compaction path ever
-looks at it.
+and nothing in the compaction path ever looks at the poll loop's cursor (`pollRevision` is a local
+variable inside `poll()`).
 
 Even the `compactMinRetain` doesn't seem to help in this situation either. It is a ceiling that
 protects the most recent 1,000 revisions from getting compacted away. For example, in the production
@@ -260,8 +261,9 @@ docker network rm kinenet
   that many conflicting creates, that is a fair response. However, this is a possible failure mode
   that I feel would be at least worth documenting for operators, and may be worth fixing as well
   since the failure mode is mostly silent and requires a restart to recover
-- [k3s-io/kine#746](https://github.com/k3s-io/kine/pull/746) rewrites the watch pipeline and will
-  almost certainly change this code substantially. I have no attachment to any particular fix; the
-  reproduction is the useful part.
+- [k3s-io/kine#746](https://github.com/k3s-io/kine/pull/746) rewrites the watch pipeline, but the
+  gap-repair path in `poll()` (one `Fill()` per loop, with `canSkipRevision` resetting on every
+  successful fill) is unchanged by it, and this repro still stalls on kine v0.17.1. I have no
+  attachment to any particular fix; the reproduction is the useful part.
 - AI helped me write the repro and dig through the production telemetry, but I have read through
   every line and the conclusions here are mine.

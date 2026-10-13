@@ -35,6 +35,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -323,9 +324,18 @@ func (s *server) watchCacheCount() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	needle := fmt.Sprintf("apiserver_watch_cache_events_received_total{resource=%q}", *resource)
+	// Kubernetes 1.37 added a group label to this metric, so match on the label rather than the
+	// exact label set. Only the core group ("") is wanted, since resource names are not unique
+	// across groups.
+	const metric = "apiserver_watch_cache_events_received_total{"
+	resourceLabel := fmt.Sprintf("resource=%q", *resource)
 	for line := range strings.SplitSeq(string(body), "\n") {
-		if strings.HasPrefix(line, needle) {
+		labels, _, ok := strings.Cut(strings.TrimPrefix(line, metric), "}")
+		if !strings.HasPrefix(line, metric) || !ok {
+			continue
+		}
+		set := strings.Split(labels, ",")
+		if slices.Contains(set, resourceLabel) && (!strings.Contains(labels, "group=") || slices.Contains(set, `group=""`)) {
 			f := strings.Fields(line)
 			if len(f) == 2 {
 				v, err := strconv.ParseFloat(f[1], 64)
